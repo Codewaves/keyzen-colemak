@@ -1,7 +1,8 @@
 var data = {};
 data.chars = " ntesiroahdjglpufywqbkvmcxz1234567890'\",.!?:;/@$%&#*()_ABCDEFGHIJKLMNOPQRSTUVWXYZ~+-={}|^<>`[]\\";
-data.consecutive = 10;
+data.consecutive = 8;
 data.word_length = 7;
+data.use_dict = true;
 
 
 $(document).ready(function() {
@@ -18,27 +19,37 @@ $(document).ready(function() {
 
 function set_level(l) {
     data.in_a_row = {};
-    for(var i = 0; i < data.chars.length; i++) {
+    for (var i = 0; i < data.chars.length; i++) {
         data.in_a_row[data.chars[i]] = data.consecutive;
     }
     data.in_a_row[data.chars[l]] = 0;
     data.level = l;
     data.word_index = 0;
     data.word_errors = {};
+    data.word_break = "";
     data.word = generate_word();
     data.keys_hit = "";
     save();
     render();
 }
 
+function set_dict(b) {
+    data.use_dict = b;
+    set_level(data.level);
+}
+
+function set_size(s) {
+    data.word_length = s;
+    set_level(data.level);
+}
 
 function keyHandler(e) {
     var key = String.fromCharCode(e.which);
-    if (data.chars.indexOf(key) > -1){
+    if (data.chars.indexOf(key) > -1) {
         e.preventDefault();
     }
     data.keys_hit += key;
-    if(key == data.word[data.word_index]) {
+    if (key == data.word[data.word_index]) {
         data.in_a_row[key] += 1;
         (new Audio("click.wav")).play();
     }
@@ -50,7 +61,7 @@ function keyHandler(e) {
     }
     data.word_index += 1;
     if (data.word_index >= data.word.length) {
-        if(get_training_chars().length == 0) {
+        if (get_training_chars().length == 0) {
             level_up();
         }
         data.word = generate_word();
@@ -86,6 +97,7 @@ function render() {
     render_level();
     render_word();
     render_level_bar();
+    render_options();
 }
 
 
@@ -94,7 +106,7 @@ function render_level() {
     var level_chars = get_level_chars();
     var training_chars = get_training_chars();
     for (var c in data.chars) {
-        if(training_chars.indexOf(data.chars[c]) != -1) {
+        if (training_chars.indexOf(data.chars[c]) != -1) {
             chars += "<span style='color: #F00' onclick='set_level(" + c + ");'>"
         }
         else if (level_chars.indexOf(data.chars[c]) != -1) {
@@ -115,15 +127,52 @@ function render_level() {
     $("#level-chars").html(chars);
 }
 
+function render_options() {
+    var options = "<span id='options-wrap'>";
+    if (!data.use_dict) {
+        options += "<span style='color: #000' onclick='set_dict(false);'>"
+    } else {
+        options += "<span style='color: #AAA' onclick='set_dict(false);'>"
+    }
+    options += "RND";
+    options += "</span>";
+    options += "-";
+    if (!data.use_dict) {
+        options += "<span style='color: #AAA' onclick='set_dict(true);'>"
+    } else {
+        options += "<span style='color: #000' onclick='set_dict(true);'>"
+    }
+    options += "DICT";
+    options += "</span>";
+    options += "  ";
+    if (data.word_length == 7) {
+        options += "<span style='color: #000' onclick='set_size(7);'>"
+    } else {
+        options += "<span style='color: #AAA' onclick='set_size(7);'>"
+    }
+    options += "7";
+    options += "</span>";
+    options += "-";
+    if (data.word_length == 7) {
+        options += "<span style='color: #AAA' onclick='set_size(8);'>"
+    } else {
+        options += "<span style='color: #000' onclick='set_size(8);'>"
+    }
+    options += "8";
+    options += "</span>";
+    options += "</span>";
+    $("#options").html(options);
+}
+
 
 function render_level_bar() {
     training_chars = get_training_chars();
-    if(training_chars.length == 0) {
+    if (training_chars.length == 0) {
         m = data.consecutive;
     }
     else {
         m = 1e100;
-        for(c in training_chars) {
+        for (c in training_chars) {
             m = Math.min(data.in_a_row[training_chars[c]], m);
         }
     }
@@ -158,7 +207,7 @@ function render_word() {
         word += "</span>";
     }
     var keys_hit = "<span class='keys-hit'>";
-    for(var d in data.keys_hit) {
+    for (var d in data.keys_hit) {
         if (data.keys_hit[d] == ' ') {
             keys_hit += "&#9141";
         }
@@ -166,7 +215,7 @@ function render_word() {
             keys_hit += data.keys_hit[d];
         }
     }
-    for(var i = data.word_index; i < data.word_length; i++) {
+    for (var i = data.word_index; i < data.word_length; i++) {
         keys_hit += "&nbsp;";
     }
     keys_hit += "</span>";
@@ -174,7 +223,29 @@ function render_word() {
 }
 
 
+function generate_word_dict() {
+    word = data.word_break.replace(/^\s\s*/, '');
+
+    while (word.length < data.word_length) {
+        if (data.level > 0) {
+            level = Math.min(data.level - 1, words_sizes.length - 1)
+            allowed_words = words.slice(0, words_sizes[level])
+            word += choose_word(allowed_words, data.word_length - word.length);
+        }
+        word += " "
+    }
+
+    if (word.length >= data.word_length) {
+        data.word_break = word.slice(data.word_length, word.length);
+    }
+    return word.slice(0, data.word_length);
+}
+
 function generate_word() {
+    if (data.use_dict) {
+        return generate_word_dict()
+    }
+
     word = '';
     for(var i = 0; i < data.word_length; i++) {
         c = choose(get_training_chars());
@@ -188,7 +259,6 @@ function generate_word() {
     return word;
 }
 
-
 function get_level_chars() {
     return data.chars.slice(0, data.level + 1).split('');
 }
@@ -196,7 +266,7 @@ function get_level_chars() {
 function get_training_chars() {
     var training_chars = [];
     var level_chars = get_level_chars();
-    for(var x in level_chars) {
+    for (var x in level_chars) {
         if (data.in_a_row[level_chars[x]] < data.consecutive) {
             training_chars.push(level_chars[x]);
         }
@@ -208,43 +278,29 @@ function choose(a) {
     return a[Math.floor(Math.random() * a.length)];
 }
 
+function choose_word(a, l) {
+    var training_chars = get_training_chars();
+    var min_length = data.level < 3 ? 0 : 1;
 
+    var words = a.filter(word => 
+        (contains(word, training_chars) &&
+         word.length > min_length &&
+         word.length <= l)
+    );
 
+    if (words.length == 0) {
+        words = a.filter(word => 
+            (word.length > min_length && word.length <= l)
+        );
+    }
 
+    if (words.length == 0) {
+        return '';
+    }
 
+    return words[Math.floor(Math.random() * words.length)];
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+function contains(a, b) {
+    return a.split("").some(c => b.indexOf(c) !== -1);
+}
