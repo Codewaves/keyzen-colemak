@@ -5,6 +5,13 @@ data.word_length = 7;
 data.use_dict = true;
 
 
+var state = {};
+state.started = false;
+state.start_time = new Date();
+state.last_press_time = new Date();
+state.presses = 0;
+state.errors = 0;
+
 $(document).ready(function() {
     if (localStorage.data != undefined) {
         load();
@@ -14,6 +21,14 @@ $(document).ready(function() {
         set_level(1);
     }
     $(document).keypress(keyHandler);
+
+    setInterval(function() {
+        var seconds = Math.round((new Date() - state.last_press_time) / 1000);
+        if (seconds > 5) {
+            state.started = false;
+        }
+        render_speed();
+    }, 1000);
 });
 
 
@@ -28,7 +43,7 @@ function set_level(l) {
     data.word_errors = {};
     data.word_break = "";
     data.word = generate_word();
-    data.keys_hit = "";
+    data.keys_hit = "";    
     save();
     render();
 }
@@ -44,6 +59,17 @@ function set_size(s) {
 }
 
 function keyHandler(e) {
+    if (!state.started) {
+        state.started = true;
+        state.start_time = new Date();
+        state.last_press_time = new Date();
+        state.presses = 1;
+        state.errors = 0;
+    } else {
+        state.presses++;
+        state.last_press_time = new Date();
+    }
+
     var key = String.fromCharCode(e.which);
     if (data.chars.indexOf(key) > -1) {
         e.preventDefault();
@@ -58,6 +84,10 @@ function keyHandler(e) {
         data.in_a_row[key] = 0;
         (new Audio("clack.wav")).play();
         data.word_errors[data.word_index] = true;
+
+        if (state.started) {
+            state.errors++;
+        }
     }
     data.word_index += 1;
     if (data.word_index >= data.word.length) {
@@ -98,6 +128,7 @@ function render() {
     render_word();
     render_level_bar();
     render_options();
+    render_speed();
 }
 
 
@@ -164,6 +195,21 @@ function render_options() {
     $("#options").html(options);
 }
 
+function render_speed() {
+    var speed = "<span id='speed-wrap'>";
+    var dot_color = state.started ? "#f78d1d" : "#AAA";
+    speed += "<span style='color: " + dot_color + "'>&bull; </span>"
+
+    var end_date = state.started ? new Date() : state.last_press_time;
+    var seconds = Math.round((end_date - state.start_time) / 1000);
+    var speed_color = state.started ? "#000" : "#AAA";
+    var time = ("0" + Math.floor(seconds / 60)).slice (-3) + ":" + ("0" + seconds % 60).slice (-2);
+    var wpm = seconds == 0 ? 0 : Math.round(state.presses * 60 / seconds / 5);
+    var acccuracy = state.presses == 0 ? 100 : (100 - state.errors / state.presses * 100);
+
+    speed += "<span style='color: " + speed_color + "'>" + time + " - " + acccuracy.toFixed(2) + "% - " + wpm + " WPM</span>"
+    $("#speed").html(speed);
+}
 
 function render_level_bar() {
     training_chars = get_training_chars();
@@ -247,9 +293,9 @@ function generate_word() {
     }
 
     word = '';
-    for(var i = 0; i < data.word_length; i++) {
+    for (var i = 0; i < data.word_length; i++) {
         c = choose(get_training_chars());
-        if(c != undefined && c != word[word.length-1]) {
+        if (c != undefined && c != word[word.length-1]) {
             word += c;
         }
         else {
@@ -282,25 +328,39 @@ function choose_word(a, l) {
     var training_chars = get_training_chars();
     var min_length = data.level < 3 ? 0 : 1;
 
-    var words = a.filter(word => 
-        (contains(word, training_chars) &&
-         word.length > min_length &&
-         word.length <= l)
-    );
+    var a_filtered = a.filter(function (word) {
+        return (word.length > min_length && word.length <= l);
+    }).map(function (word) {
+        return {word: word, count: contains(word, training_chars)};
+    });
 
-    if (words.length == 0) {
-        words = a.filter(word => 
-            (word.length > min_length && word.length <= l)
-        );
-    }
-
-    if (words.length == 0) {
+    if (a_filtered.length == 0) {
         return '';
     }
 
-    return words[Math.floor(Math.random() * words.length)];
+    a_filtered.sort(function(a, b) {
+        return b.count - a.count;
+    });
+
+    var count = 0;
+    var matches = a_filtered[0].count;
+    a_filtered.every(function(word) {
+        if (word.count != matches && count > 8) {
+            return false;
+        }
+        matches = word.count;
+        count += 1;
+        return true;
+    });
+    a_filtered = a_filtered.slice(0, count);
+
+    return a_filtered[Math.floor(Math.random() * a_filtered.length)].word;
 }
 
 function contains(a, b) {
-    return a.split("").some(c => b.indexOf(c) !== -1);
+    var chars = a.split("").filter(function(c) {
+        return b.indexOf(c) != -1;
+    });
+    var unique_chars = [...new Set(chars)];
+    return unique_chars.length;
 }
